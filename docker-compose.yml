@@ -1,0 +1,38 @@
+# filepath: docker-compose.yml
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  backend:
+    build: ./backend
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - MONGO_URI=mongodb://mongo:27017/opencric
+    depends_on:
+      - mongo
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:4000
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  mongo-data:
