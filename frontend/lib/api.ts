@@ -2,18 +2,10 @@
 import axios from 'axios';
 
 // Helper to get the correct Base URL
-const getBaseUrl = () => {
-  // If we are in the browser (client-side)
-  if (typeof window !== 'undefined') {
-    return 'http://localhost:4000'; 
-  }
-  // If we are on the server (server-side rendering inside Docker)
-  // We use the internal container name 'backend'
-  return 'http://backend:4000';
-};
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 export const api = axios.create({
-  baseURL: getBaseUrl(),
+  baseURL: API_BASE,
 });
 
 // Helper wrapper to handle errors gracefully
