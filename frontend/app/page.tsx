@@ -1,5 +1,4 @@
-// frontend/app/page.tsx
-
+// filepath: frontend/app/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -20,63 +19,48 @@ export default function Home() {
   const [matches, setMatches] = useState<any[]>([]);
   const [news, setNews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  
   const [activeTab, setActiveTab] = useState<'live' | 'recent' | 'upcoming'>('live');
 
-  // --- NEW: friendlier live detection + debug log ---
   useEffect(() => {
     Promise.all([getMatches(), getNews()])
       .then(([matchesData, newsData]) => {
-        // Debug: inspect API payload shape during development
-        if (typeof window !== 'undefined') {
-          console.log('DEBUG: matchesData from API ->', matchesData);
-        }
-
         setMatches(matchesData);
         setNews(newsData);
-
+        
         const hasLive = matchesData.some((m: any) => {
-          const d = m.info.dates?.[0];
-          const dateValid = d && isValid(parseISO(d));
-          const date = dateValid ? parseISO(d) : null;
-
-          // Match started if innings array exists and has entries
-          const started = Array.isArray(m.innings) && m.innings.length > 0;
-
-          // Toss presence indicates match setup has begun
-          const tossExists = m.info.toss && Object.keys(m.info.toss).length > 0;
-
-          // Consider current if date is not in the future (i.e., today or past)
-          const isCurrent = date ? !isFuture(date) : true;
-
-          // Live if no winner AND (match started OR toss exists and date not future)
-          return !m.info.outcome?.winner && (started || (tossExists && isCurrent));
+           const d = m.info.dates?.[0];
+           if (!d || !isValid(parseISO(d))) return false;
+           const date = parseISO(d);
+           // STRICT LIVE CHECK: Must be Today or Yesterday (to account for timezone diffs) AND no winner yet
+           const isCurrent = isToday(date) || isYesterday(date); 
+           return !m.info.outcome?.winner && isCurrent && m.innings?.length > 0;
         });
-
         if (!hasLive) setActiveTab('recent');
       })
       .catch(err => console.error(err))
       .finally(() => setLoading(false));
   }, []);
 
-  // --- UPDATED isLive helper (more forgiving) ---
+  // --- Filtering Logic ---
   const isLive = (m: any) => {
     const d = m.info.dates?.[0];
-    const dateValid = d && isValid(parseISO(d));
-    const date = dateValid ? parseISO(d) : null;
-
-    const started = Array.isArray(m.innings) && m.innings.length > 0;
-    const tossExists = m.info.toss && Object.keys(m.info.toss).length > 0;
-
-    const isCurrent = date ? !isFuture(date) : true;
-
-    return !m.info.outcome?.winner && (started || (tossExists && isCurrent));
+    if (!d || !isValid(parseISO(d))) return false;
+    const date = parseISO(d);
+    
+    // STRICTER LIVE FILTER:
+    // 1. No winner declared
+    // 2. Innings exist (match started)
+    // 3. Date is Today or Yesterday (filters out old abandoned/incomplete matches from seed)
+    const isCurrent = isToday(date) || isYesterday(date);
+    return !m.info.outcome?.winner && isCurrent && m.innings?.length > 0;
   };
-
+  
   const isUpcoming = (m: any) => {
      const d = m.info.dates?.[0];
      return d && isValid(parseISO(d)) && isFuture(parseISO(d));
   };
-
+  
   const isRecent = (m: any) => !!m.info.outcome?.winner;
 
   // Get matches for active tab
@@ -98,8 +82,9 @@ export default function Home() {
       inn.overs.forEach((o: any) => o.deliveries.forEach((d: any) => {
         r += d.runs.total;
         if (d.wickets?.length) w++;
-
+        
         // Count legal balls for over calculation
+        // Assuming extras struct: { wides: 1, ... } or { noballs: 1 }
         const isWide = d.extras && d.extras.wides;
         const isNoBall = d.extras && d.extras.noballs;
         if (!isWide && !isNoBall) {
@@ -155,6 +140,7 @@ export default function Home() {
 
         {/* CENTER: Tabbed Match Feed */}
         <div className="lg:col-span-2 space-y-0">
+           
            {/* Tabs */}
            <div className="flex bg-white rounded-t-sm border border-gray-200 border-b-0 overflow-hidden">
               {['live', 'recent', 'upcoming'].map((tab) => (
