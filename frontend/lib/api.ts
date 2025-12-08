@@ -3,7 +3,10 @@ import axios from 'axios';
 
 // Helper to get the correct Base URL
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-
+// TEMP: reveal the runtime API base (remove after debugging)
+if (typeof window !== 'undefined') {
+  console.log('API_BASE at runtime ->', API_BASE);
+}
 export const api = axios.create({
   baseURL: API_BASE,
 });
@@ -13,9 +16,11 @@ const fetcher = async (url: string) => {
   try {
     const { data } = await api.get(url);
     return data;
-  } catch (error) {
+  } catch (error: any) {
+    // Log full error object so you can inspect network/axios problems
     console.error(`Error fetching ${url}:`, error);
-    return []; // Return empty array/object to prevent page crash
+    // Re-throw so caller can show an error, or return null to indicate failure
+    throw error;
   }
 };
 
