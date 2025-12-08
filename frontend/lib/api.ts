@@ -1,25 +1,27 @@
-// filepath: frontend/lib/api.ts
+// frontend/lib/api.ts
 import axios from 'axios';
 
-// Helper to get the correct Base URL
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-// TEMP: reveal the runtime API base (remove after debugging)
+
+// DEBUG: reveal runtime base URL (remove later)
 if (typeof window !== 'undefined') {
   console.log('API_BASE at runtime ->', API_BASE);
 }
+
 export const api = axios.create({
   baseURL: API_BASE,
+  timeout: 10000,
 });
 
-// Helper wrapper to handle errors gracefully
+// Do not swallow errors silently — let caller handle or inspect error
 const fetcher = async (url: string) => {
   try {
     const { data } = await api.get(url);
     return data;
-  } catch (error: any) {
-    // Log full error object so you can inspect network/axios problems
-    console.error(`Error fetching ${url}:`, error);
-    // Re-throw so caller can show an error, or return null to indicate failure
+  } catch (error) {
+    // More informative logging for debugging deployments
+    console.error(`Error fetching ${url}:`, error?.message ?? error, error);
+    // rethrow so UI can show an error instead of silently returning []
     throw error;
   }
 };
@@ -31,7 +33,6 @@ export const getSeries = () => fetcher('/api/series');
 export const getRankings = () => fetcher('/api/rankings');
 export const searchMatches = (query: string) => fetcher(`/api/search?q=${encodeURIComponent(query)}`);
 
-// Admin Functions (POST requests)
 export const updateScore = async (payload: any) => (await api.post('/api/admin/score', payload)).data;
 export const updateToss = async (payload: any) => (await api.post('/api/admin/toss', payload)).data;
 export const changeInnings = async (payload: any) => (await api.post('/api/admin/change-innings', payload)).data;
