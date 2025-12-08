@@ -5,8 +5,8 @@
 import { useEffect, useState } from 'react';
 import { getMatches, getNews } from '@/lib/api';
 import Link from 'next/link';
-import { Loader2, PlayCircle, Filter } from 'lucide-react';
-import { format, isFuture, parseISO, isValid } from 'date-fns';
+import { Loader2, ChevronRight, PlayCircle, Calendar, Filter } from 'lucide-react';
+import { format, isFuture, parseISO, isValid, isToday, isYesterday } from 'date-fns';
 import clsx from 'clsx';
 import Navbar from '@/components/Navbar';
 
@@ -22,72 +22,64 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'live' | 'recent' | 'upcoming'>('live');
 
+  // --- NEW: friendlier live detection + debug log ---
   useEffect(() => {
     Promise.all([getMatches(), getNews()])
       .then(([matchesData, newsData]) => {
-        if (typeof window !== 'undefined') console.log('DEBUG: matchesData ->', matchesData);
+        // Debug: inspect API payload shape during development
+        if (typeof window !== 'undefined') {
+          console.log('DEBUG: matchesData from API ->', matchesData);
+        }
 
-        setMatches(matchesData || []);
-        setNews(newsData || []);
+        setMatches(matchesData);
+        setNews(newsData);
 
-        // Determine default tab:
-        // - prefer Live (admin's active matches: no winner)
-        // - else Recent (matches with winners)
-        const hasActive = (matchesData || []).some((m: any) => {
-          return !m.info?.outcome?.winner;
-        });
-
-        const hasRecent = (matchesData || []).some((m: any) => {
-          // Recent if winner exists and not a future-dated result
-          const d = m.info?.dates?.[0];
+        const hasLive = matchesData.some((m: any) => {
+          const d = m.info.dates?.[0];
           const dateValid = d && isValid(parseISO(d));
           const date = dateValid ? parseISO(d) : null;
-          const notFuture = date ? !isFuture(date) : true;
-          return !!m.info?.outcome?.winner && notFuture;
+
+          // Match started if innings array exists and has entries
+          const started = Array.isArray(m.innings) && m.innings.length > 0;
+
+          // Toss presence indicates match setup has begun
+          const tossExists = m.info.toss && Object.keys(m.info.toss).length > 0;
+
+          // Consider current if date is not in the future (i.e., today or past)
+          const isCurrent = date ? !isFuture(date) : true;
+
+          // Live if no winner AND (match started OR toss exists and date not future)
+          return !m.info.outcome?.winner && (started || (tossExists && isCurrent));
         });
 
-        if (hasActive) setActiveTab('live');
-        else if (hasRecent) setActiveTab('recent');
-        else setActiveTab('upcoming');
+        if (!hasLive) setActiveTab('recent');
       })
-      .catch(err => {
-        console.error('Failed to load matches/news', err);
-      })
+      .catch(err => console.error(err))
       .finally(() => setLoading(false));
   }, []);
 
-  // --- LIVE logic aligned with admin but guarded against future-only fixtures ---
+  // --- UPDATED isLive helper (more forgiving) ---
   const isLive = (m: any) => {
-    const noWinner = !m.info?.outcome?.winner;
-
-    const d = m.info?.dates?.[0];
+    const d = m.info.dates?.[0];
     const dateValid = d && isValid(parseISO(d));
     const date = dateValid ? parseISO(d) : null;
 
     const started = Array.isArray(m.innings) && m.innings.length > 0;
-    const tossExists = m.info?.toss && Object.keys(m.info.toss || {}).length > 0;
+    const tossExists = m.info.toss && Object.keys(m.info.toss).length > 0;
 
-    const notFuture = date ? !isFuture(date) : true;
+    const isCurrent = date ? !isFuture(date) : true;
 
-    return noWinner && (started || tossExists || notFuture);
-  };
-
-  // --- RECENT logic: match has a declared winner (align with admin) ---
-  const isRecent = (m: any) => {
-    if (!m.info?.outcome?.winner) return false;
-    const d = m.info?.dates?.[0];
-    const dateValid = d && isValid(parseISO(d));
-    const date = dateValid ? parseISO(d) : null;
-    // don't treat results with future dates as recent (just in case)
-    const notFuture = date ? !isFuture(date) : true;
-    return notFuture;
+    return !m.info.outcome?.winner && (started || (tossExists && isCurrent));
   };
 
   const isUpcoming = (m: any) => {
-     const d = m.info?.dates?.[0];
+     const d = m.info.dates?.[0];
      return d && isValid(parseISO(d)) && isFuture(parseISO(d));
   };
 
+  const isRecent = (m: any) => !!m.info.outcome?.winner;
+
+  // Get matches for active tab
   const displayMatches = matches.filter(m => {
      if (activeTab === 'live') return isLive(m);
      if (activeTab === 'upcoming') return isUpcoming(m);
@@ -104,8 +96,10 @@ export default function Home() {
 
     if(inn.overs) {
       inn.overs.forEach((o: any) => o.deliveries.forEach((d: any) => {
-        r += d.runs?.total ?? 0;
+        r += d.runs.total;
         if (d.wickets?.length) w++;
+
+        // Count legal balls for over calculation
         const isWide = d.extras && d.extras.wides;
         const isNoBall = d.extras && d.extras.noballs;
         if (!isWide && !isNoBall) {
@@ -128,6 +122,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 flex gap-4 overflow-x-auto text-xs font-medium text-gray-600 items-center">
            <span className="font-bold text-black text-xs uppercase tracking-wide">Quick Access</span>
            <span className="text-gray-300 text-lg font-light">|</span>
+           <a href="https://www.wplt20.com/auction" target="_blank" rel="noopener noreferrer" className="hover:text-[#009270] whitespace-nowrap flex items-center gap-1">WPL Auction 2026 <span className="bg-red-500 text-white text-[9px] px-1 rounded">NEW</span></a>
            <Link href="/fantasy" className="hover:text-[#009270] whitespace-nowrap">Fantasy Handbook</Link>
            <Link href="/series" className="hover:text-[#009270] whitespace-nowrap">Browse Series</Link>
            <Link href="/rankings" className="hover:text-[#009270] whitespace-nowrap">ICC Rankings</Link>
