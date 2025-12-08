@@ -1,5 +1,5 @@
 // frontend/lib/api.ts
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -11,30 +11,63 @@ if (typeof window !== 'undefined') {
 export const api = axios.create({
   baseURL: API_BASE,
   timeout: 10000,
+  // withCredentials: true, // enable if your backend uses cookies/sessions
 });
 
-// Do not swallow errors silently — let caller handle or inspect error
-const fetcher = async (url: string) => {
+type APIResponse<T = any> = T;
+
+/** Extract a safe error message from unknown. Uses Axios error shape when available. */
+const safeErrorMessage = (err: unknown): string => {
+  if (axios.isAxiosError(err)) {
+    // AxiosError may contain response data with a message
+    const axiosErr = err as AxiosError & { response?: any };
+    return axiosErr.response?.data?.message ?? axiosErr.message ?? 'Request failed (AxiosError)';
+  }
+  if (err instanceof Error) return err.message;
   try {
-    const { data } = await api.get(url);
-    return data;
-  } catch (error) {
-    // More informative logging for debugging deployments
-    console.error(`Error fetching ${url}:`, error?.message ?? error, error);
-    // rethrow so UI can show an error instead of silently returning []
-    throw error;
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
   }
 };
 
-export const getMatches = () => fetcher('/api/matches');
-export const getMatchById = (id: string) => fetcher(`/api/matches/${id}`);
-export const getNews = () => fetcher('/api/news');
-export const getSeries = () => fetcher('/api/series');
-export const getRankings = () => fetcher('/api/rankings');
-export const searchMatches = (query: string) => fetcher(`/api/search?q=${encodeURIComponent(query)}`);
+// Generic fetcher that returns the response payload (or throws)
+const fetcher = async <T = any>(url: string): Promise<APIResponse<T>> => {
+  try {
+    const res = await api.get<APIResponse<T>>(url);
+    return res.data;
+  } catch (err: unknown) {
+    const msg = safeErrorMessage(err);
+    console.error(`Error fetching ${url}:`, msg, err);
+    throw new Error(msg);
+  }
+};
 
-export const updateScore = async (payload: any) => (await api.post('/api/admin/score', payload)).data;
-export const updateToss = async (payload: any) => (await api.post('/api/admin/toss', payload)).data;
-export const changeInnings = async (payload: any) => (await api.post('/api/admin/change-innings', payload)).data;
-export const createMatch = async (payload: any) => (await api.post('/api/admin/create-match', payload)).data;
-export const updateRankings = async (category: string, players: any[]) => (await api.post('/api/admin/rankings', { category, players })).data;
+export const getMatches = () => fetcher<any[]>('/api/matches');
+
+export const getMatchById = (id: string) => {
+  if (!id) return Promise.reject(new Error('getMatchById requires a non-empty id'));
+  return fetcher<any>(`/api/matches/${encodeURIComponent(id)}`);
+};
+
+export const getNews = () => fetcher<any[]>('/api/news');
+export const getSeries = () => fetcher<any[]>('/api/series');
+export const getRankings = () => fetcher<any>('/api/rankings');
+export const searchMatches = (query: string) => fetcher<any>(`/api/search?q=${encodeURIComponent(query)}`);
+
+const post = async <T = any, R = any>(url: string, payload?: T): Promise<R> => {
+  try {
+    const res = await api.post<R>(url, payload);
+    return res.data;
+  } catch (err: unknown) {
+    const msg = safeErrorMessage(err);
+    console.error(`POST ${url} failed:`, msg, err);
+    throw new Error(msg);
+  }
+};
+
+export const updateScore = (payload: any) => post('/api/admin/score', payload);
+export const updateToss = (payload: any) => post('/api/admin/toss', payload);
+export const changeInnings = (payload: any) => post('/api/admin/change-innings', payload);
+export const createMatch = (payload: any) => post('/api/admin/create-match', payload);
+export const updateRankings = (category: string, players: any[]) => post('/api/admin/rankings', { category, players });
