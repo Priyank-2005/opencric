@@ -1,4 +1,4 @@
-// frontend/app/admin/page.tsx
+// filepath: frontend/app/admin/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -72,6 +72,39 @@ export default function Admin() {
     }
   }, [router]);
 
+  // debug: listen for clicks briefly to confirm events fire
+  useEffect(() => {
+    console.log('Admin mounted (debug instrumentation)');
+    let clickLogger: any = null;
+    try {
+      clickLogger = (e: any) => {
+        // log element that received the click (helpful to see overlays)
+        const el = e.target as HTMLElement;
+        console.log('DOM click ->', el.tagName, el.id || '', el.className || '');
+      };
+      // attach for 20s to avoid flooding long-term
+      document.addEventListener('click', clickLogger);
+      const t = setTimeout(() => document.removeEventListener('click', clickLogger!), 20000);
+      return () => { clearTimeout(t); if (clickLogger) document.removeEventListener('click', clickLogger); };
+    } catch (e) {
+      /* ignore */
+    }
+  }, []);
+
+  // overlay checker: logs top element at center for 10s
+  useEffect(() => {
+    const checkOverlay = () => {
+      try {
+        const el = document.elementsFromPoint(window.innerWidth / 2, window.innerHeight / 2)[0];
+        if (el) console.log('Top element at center ->', el.tagName, el.id || '(no id)', el.className || '(no class)');
+      } catch (e) { console.warn('overlay check failed', e); }
+    };
+    checkOverlay();
+    const iv = setInterval(checkOverlay, 1500);
+    setTimeout(() => clearInterval(iv), 10000);
+    return () => clearInterval(iv);
+  }, []);
+
   // refresh function with defensive handling
   const refreshMatches = async () => {
     try {
@@ -99,7 +132,7 @@ export default function Admin() {
     }
   }, [isAuthenticated]);
 
-  // load selected match
+  // load selected match (normalize players if needed)
   useEffect(() => {
     if (!selectedMatchId) {
       setActiveMatch(null);
@@ -112,6 +145,15 @@ export default function Admin() {
     setIsLoading(true);
     getMatchById(selectedMatchId)
       .then(data => {
+        // Normalize players into data.info.players for robustness
+        if (!data) throw new Error('Empty match data');
+        const playersFromInfo = data?.info?.players;
+        const playersFromTop = data?.players;
+        const playersFromMatches0 = data?.matches?.[0]?.players;
+        const normalizedPlayers = playersFromInfo || playersFromTop || playersFromMatches0 || {};
+        if (!data.info) data.info = {};
+        data.info.players = normalizedPlayers;
+
         setActiveMatch(data);
         // default toss values
         if (data?.info?.teams && data.info.teams.length > 0) {
@@ -164,6 +206,7 @@ export default function Admin() {
 
   // Toss update with logging and better error messages
   const handleTossUpdate = async () => {
+    console.log('handleTossUpdate clicked', { selectedMatchId, tossWinner, tossDecision });
     if (!selectedMatchId) {
       alert('Select a fixture first.');
       return;
@@ -186,7 +229,7 @@ export default function Admin() {
       refreshMatches();
     } catch (err: any) {
       console.error('Toss update failed', err);
-      alert('Failed to update toss: ' + (err?.message ?? (err?.toString?.() ?? 'Unknown error')));
+      alert('Failed to update toss: ' + (err?.response?.data?.message || err?.message || err?.toString?.() || 'Unknown error'));
       setStatus('Error updating toss');
     } finally {
       setIsLoading(false);
@@ -195,6 +238,7 @@ export default function Admin() {
   };
 
   const handleChangeInnings = async () => {
+    console.log('handleChangeInnings clicked', { selectedMatchId });
     if (!selectedMatchId) { alert('Select a fixture first.'); return; }
     if (!confirm('End Innings?')) return;
     setIsLoading(true);
@@ -217,6 +261,7 @@ export default function Admin() {
   };
 
   const handleScore = async (runs: number, extraType: string | null = null, isWicket: boolean = false) => {
+    console.log('handleScore clicked', { runs, extraType, isWicket, selectedMatchId, striker, bowler });
     if (!selectedMatchId) { alert('Select a fixture first.'); return; }
     if (!striker || !bowler) { setStatus('Select striker & bowler'); setTimeout(() => setStatus(null), 2000); return; }
     const payload = { matchId: selectedMatchId, runs, extraType, isWicket, batter: striker, bowler, comment: isWicket ? `WICKET! ${striker} is out.` : `${runs} runs to ${striker}.` };
@@ -231,7 +276,7 @@ export default function Admin() {
       setActiveMatch(updated);
     } catch (err: any) {
       console.error('updateScore failed', err);
-      alert('Failed to update score: ' + (err?.message ?? String(err)));
+      alert('Failed to update score: ' + (err?.response?.data?.message || err?.message || String(err)));
       setStatus('Error: ' + (err?.message ?? 'Update failed'));
     } finally {
       setIsLoading(false);
@@ -256,6 +301,7 @@ export default function Admin() {
   };
 
   const handleSubmitCreate = async () => {
+    console.log('handleSubmitCreate clicked', { createType, eventName, teams });
     setIsLoading(true);
     try {
       const matchesToCreate: any[] = [];
@@ -309,8 +355,8 @@ export default function Admin() {
       <div className="p-4 md:p-8">
         <div className="max-w-6xl mx-auto mb-6 flex justify-between items-center border-b border-gray-700 pb-2">
           <div className="flex gap-4">
-            <button onClick={() => setActiveTab('matches')} className={clsx('pb-2 px-4 font-bold border-b-2 transition', activeTab === 'matches' ? 'border-green-500 text-white' : 'border-transparent text-gray-500 hover:text-gray-300')}>Matches</button>
-            <button onClick={() => setActiveTab('rankings')} className={clsx('pb-2 px-4 font-bold border-b-2 transition', activeTab === 'rankings' ? 'border-green-500 text-white' : 'border-transparent text-gray-500 hover:text-gray-300')}>Rankings</button>
+            <button onClick={() => { console.log('Matches tab clicked'); setActiveTab('matches'); }} className={clsx('pb-2 px-4 font-bold border-b-2 transition', activeTab === 'matches' ? 'border-green-500 text-white' : 'border-transparent text-gray-500 hover:text-gray-300')}>Matches</button>
+            <button onClick={() => { console.log('Rankings tab clicked'); setActiveTab('rankings'); }} className={clsx('pb-2 px-4 font-bold border-b-2 transition', activeTab === 'rankings' ? 'border-green-500 text-white' : 'border-transparent text-gray-500 hover:text-gray-300')}>Rankings</button>
           </div>
           <button onClick={handleLogout} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 font-bold uppercase tracking-wider"><LogOut size={14}/> Logout</button>
         </div>
@@ -321,7 +367,7 @@ export default function Admin() {
               <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 shadow-lg">
                 <div className="flex justify-between items-center mb-3">
                   <h2 className="text-gray-400 text-xs font-bold uppercase">Match Control</h2>
-                  <button onClick={() => setIsCreateModalOpen(true)} className="bg-green-700 hover:bg-green-600 text-white px-2 py-1 rounded text-xs flex items-center gap-1"><Plus size={12}/> New Match</button>
+                  <button onClick={() => { console.log('New Match button clicked'); setIsCreateModalOpen(true); }} className="bg-green-700 hover:bg-green-600 text-white px-2 py-1 rounded text-xs flex items-center gap-1"><Plus size={12}/> New Match</button>
                 </div>
 
                 <select value={selectedMatchId} onChange={(e) => setSelectedMatchId(e.target.value)} className="w-full bg-gray-900 border border-gray-600 text-white p-3 rounded-lg text-sm mb-4">
@@ -348,7 +394,8 @@ export default function Admin() {
                     <label className="text-xs text-gray-500 mb-1 block">Striker ({battingTeamName})</label>
                     <select value={striker} onChange={(e) => setStriker(e.target.value)} className="w-full bg-gray-900 border border-gray-600 p-2 rounded text-sm text-white">
                       <option value="">Select Striker</option>
-                      {activeMatch?.info?.players?.[battingTeamName]?.map((p: string) => (<option key={p} value={p}>{p}</option>)) ?? <option value="Batter 1">Batter 1 (Squad not loaded)</option>}
+                      {(activeMatch?.info?.players?.[battingTeamName] || []).map((p: string) => (<option key={p} value={p}>{p}</option>))}
+                      {(!(activeMatch?.info?.players?.[battingTeamName] || []).length) && <option value="Batter 1">Batter 1 (Squad not loaded)</option>}
                     </select>
                   </div>
 
@@ -356,7 +403,8 @@ export default function Admin() {
                     <label className="text-xs text-gray-500 mb-1 block">Bowler ({bowlingTeamName})</label>
                     <select value={bowler} onChange={(e) => setBowler(e.target.value)} className="w-full bg-gray-900 border border-gray-600 p-2 rounded text-sm text-white">
                       <option value="">Select Bowler</option>
-                      {activeMatch?.info?.players?.[bowlingTeamName]?.map((p: string) => (<option key={p} value={p}>{p}</option>)) ?? <option value="Bowler 1">Bowler 1 (Squad not loaded)</option>}
+                      {(activeMatch?.info?.players?.[bowlingTeamName] || []).map((p: string) => (<option key={p} value={p}>{p}</option>))}
+                      {(!(activeMatch?.info?.players?.[bowlingTeamName] || []).length) && <option value="Bowler 1">Bowler 1 (Squad not loaded)</option>}
                     </select>
                   </div>
                 </div>
@@ -400,16 +448,16 @@ export default function Admin() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-4 mb-6">
-                    <button onClick={() => handleScore(4)} className="bg-blue-600 py-6 rounded-xl text-white text-3xl">4</button>
-                    <button onClick={() => handleScore(6)} className="bg-purple-600 py-6 rounded-xl text-white text-3xl">6</button>
+                    <button onClick={() => handleScore(4)} disabled={isLoading} className="bg-blue-600 py-6 rounded-xl text-white text-3xl">4</button>
+                    <button onClick={() => handleScore(6)} disabled={isLoading} className="bg-purple-600 py-6 rounded-xl text-white text-3xl">6</button>
                   </div>
 
                   <div className="grid grid-cols-5 gap-3">
-                    <button onClick={() => handleScore(1, 'wide')} className="py-4 rounded">Wide</button>
-                    <button onClick={() => handleScore(1, 'noball')} className="py-4 rounded">NB</button>
-                    <button onClick={() => handleScore(0, 'bye')} className="py-4 rounded">Bye</button>
-                    <button onClick={() => handleScore(0, 'legbye')} className="py-4 rounded">LB</button>
-                    <button onClick={() => handleScore(0, null, true)} className="py-4 rounded bg-red-600 text-white">OUT</button>
+                    <button onClick={() => handleScore(1, 'wide')} disabled={isLoading} className="py-4 rounded">Wide</button>
+                    <button onClick={() => handleScore(1, 'noball')} disabled={isLoading} className="py-4 rounded">NB</button>
+                    <button onClick={() => handleScore(0, 'bye')} disabled={isLoading} className="py-4 rounded">Bye</button>
+                    <button onClick={() => handleScore(0, 'legbye')} disabled={isLoading} className="py-4 rounded">LB</button>
+                    <button onClick={() => handleScore(0, null, true)} disabled={isLoading} className="py-4 rounded bg-red-600 text-white">OUT</button>
                   </div>
                 </div>
               )}
@@ -449,6 +497,24 @@ export default function Admin() {
           </div>
         )}
       </div>
+
+      {/* Create Modal (keeps same structure) */}
+      {isCreateModalOpen && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 w-full max-w-2xl rounded-xl shadow-2xl border border-gray-700 flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-gray-700 flex justify-between items-center"><h2 className="text-xl font-bold text-white">Create New Fixture</h2><button onClick={() => { console.log('Close modal'); setIsCreateModalOpen(false); }} className="text-gray-400 hover:text-white"><X size={24}/></button></div>
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              <div><label className="block text-xs font-bold text-gray-400 uppercase mb-2">Event Type</label><div className="flex gap-4"><button onClick={() => { setCreateType('series'); setTeams(['', '']); }} className={clsx("flex-1 py-3 rounded-lg border text-sm font-bold", createType === 'series' ? "bg-blue-600 border-blue-500 text-white" : "bg-gray-700 border-gray-600 text-gray-400")}>Bilateral Series</button><button onClick={() => { setCreateType('tournament'); setTeams(['', '', '', '']); }} className={clsx("flex-1 py-3 rounded-lg border text-sm font-bold", createType === 'tournament' ? "bg-purple-600 border-purple-500 text-white" : "bg-gray-700 border-gray-600 text-gray-400")}>Tournament (Auto)</button></div></div>
+              <div><label className="block text-xs font-bold text-gray-400 uppercase mb-2">Event Name</label><input type="text" placeholder="e.g. Ashes 2026" className="w-full bg-gray-900 border border-gray-600 p-3 rounded text-white" value={eventName} onChange={e => setEventName(e.target.value)} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 uppercase mb-2">Player Details (JSON)</label><div className="flex items-center gap-3"><label className="flex-1 cursor-pointer bg-gray-700 hover:bg-gray-600 border border-gray-500 rounded p-3 text-sm text-gray-300 flex items-center justify-center gap-2"><Upload size={16} /> {playerDataJson ? "File Loaded" : "Upload JSON"} <input type="file" accept=".json" className="hidden" onChange={handleFileUpload} /></label>{playerDataJson && <span className="text-green-400 text-xs font-bold">Ready</span>}</div></div>
+              <div><label className="block text-xs font-bold text-gray-400 uppercase mb-2">Participating Teams</label><div className="grid grid-cols-2 gap-3">{teams.map((team, idx) => (<input key={idx} type="text" placeholder={`Team ${idx+1}`} className="bg-gray-900 border border-gray-600 p-3 rounded text-white" value={team} onChange={e => { const n = [...teams]; n[idx] = e.target.value; setTeams(n); }} />))} {createType === 'tournament' && <button onClick={() => setTeams([...teams, ''])} className="bg-gray-700 hover:bg-gray-600 text-white rounded p-3 flex items-center justify-center"><Plus size={16}/></button>}</div></div>
+              {createType === 'series' && <div className="grid grid-cols-2 gap-4 border-t border-gray-700 pt-4"><div><label className="block text-xs font-bold text-gray-400 uppercase mb-2">Start Date</label><input type="date" className="w-full bg-gray-900 border border-gray-600 p-3 rounded text-white" value={seriesConfig.startDate} onChange={e => setSeriesConfig({...seriesConfig, startDate: e.target.value})} /></div><div><label className="block text-xs font-bold text-gray-400 uppercase mb-2">Matches</label><input type="number" min="1" max="10" className="w-full bg-gray-900 border border-gray-600 p-3 rounded text-white" value={seriesConfig.numMatches} onChange={e => setSeriesConfig({...seriesConfig, numMatches: parseInt(e.target.value)})} /></div><div><label className="block text-xs font-bold text-gray-400 uppercase mb-2">Format</label><select className="w-full bg-gray-900 border border-gray-600 p-3 rounded text-white" value={seriesConfig.format} onChange={e => setSeriesConfig({...seriesConfig, format: e.target.value})}><option value="T20">T20</option><option value="ODI">ODI</option><option value="Test">Test</option></select></div><div><label className="block text-xs font-bold text-gray-400 uppercase mb-2">Venue</label><input type="text" placeholder="Default Venue" className="w-full bg-gray-900 border border-gray-600 p-3 rounded text-white" value={seriesConfig.venue} onChange={e => setSeriesConfig({...seriesConfig, venue: e.target.value})} /></div></div>}
+              {createType === 'tournament' && <div className="grid grid-cols-2 gap-4 border-t border-gray-700 pt-4"><div><label className="block text-xs font-bold text-gray-400 uppercase mb-2">Start Date</label><input type="date" className="w-full bg-gray-900 border border-gray-600 p-3 rounded text-white" value={tournamentConfig.startDate} onChange={e => setTournamentConfig({...tournamentConfig, startDate: e.target.value})} /></div><div><label className="block text-xs font-bold text-gray-400 uppercase mb-2">Format</label><select className="w-full bg-gray-900 border border-gray-600 p-3 rounded text-white" value={tournamentConfig.format} onChange={e => setTournamentConfig({...tournamentConfig, format: e.target.value})}><option value="T20">T20</option><option value="ODI">ODI</option><option value="Test">Test</option></select></div><div className="col-span-2"><label className="block text-xs font-bold text-gray-400 uppercase mb-2">Venue</label><input type="text" placeholder="Tournament Venue" className="w-full bg-gray-900 border border-gray-600 p-3 rounded text-white" value={tournamentConfig.venue} onChange={e => setTournamentConfig({...tournamentConfig, venue: e.target.value})} /></div></div>}
+            </div>
+            <div className="p-6 border-t border-gray-700 flex justify-end gap-3 bg-gray-800"><button onClick={() => { console.log('Cancel create'); setIsCreateModalOpen(false); }} className="px-4 py-2 rounded text-gray-300 hover:text-white hover:bg-gray-700">Cancel</button><button onClick={handleSubmitCreate} disabled={isLoading} className="bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded font-bold shadow-lg">Auto-Create</button></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
